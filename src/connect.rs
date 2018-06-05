@@ -2,11 +2,14 @@ use bytes::{Buf, BufMut, IntoBuf};
 use futures::{Async, Future, Poll};
 use hyper::client::{HttpConnector, Service};
 use hyper::Uri;
-use hyper_tls::{HttpsConnector, MaybeHttpsStream};
-use native_tls::TlsConnector;
+
+use hyper_rustls::{HttpsConnector, MaybeHttpsStream};
+use rustls::{ClientConfig, ClientSession};
+use tokio_rustls::{ClientConfigExt, TlsStream};
+use webpki::DNSNameRef;
+
 use tokio_core::reactor::Handle;
 use tokio_io::{AsyncRead, AsyncWrite};
-use tokio_tls::{TlsConnectorExt, TlsStream};
 
 use std::io::{self, Cursor, Read, Write};
 use std::sync::Arc;
@@ -16,21 +19,21 @@ use {proxy, Proxy};
 // pub(crate)
 
 pub struct Connector {
-    https: HttpsConnector<HttpConnector>,
+    https: HttpsConnector,
     proxies: Arc<Vec<Proxy>>,
-    tls: TlsConnector,
+    tls: Arc<ClientConfig>,
 }
 
 impl Connector {
-    pub fn new(threads: usize, tls: TlsConnector, proxies: Arc<Vec<Proxy>>, handle: &Handle) -> Connector {
+    pub fn new(threads: usize, config: ClientConfig, proxies: Arc<Vec<Proxy>>, handle: &Handle) -> Connector {
         let mut http = HttpConnector::new(threads, handle);
         http.enforce_http(false);
-        let https = HttpsConnector::from((http, tls.clone()));
+        let https = HttpsConnector::from((http, config.clone()));
 
         Connector {
             https: https,
             proxies: proxies,
-            tls: tls,
+            tls: Arc::new(config),
         }
     }
 
@@ -57,7 +60,8 @@ impl Service for Connector {
                         trace!("tunneling HTTPS over proxy");
                         tunnel(conn, host.clone(), port)
                             .and_then(move |tunneled| {
-                                tls.connect_async(&host, tunneled)
+                                let host = DNSNameRef::try_from_ascii_str(&host).unwrap();
+                                tls.connect_async(host, tunneled)
                                     .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
                             })
                             .map(|io| Conn::Proxied(io))
@@ -70,14 +74,14 @@ impl Service for Connector {
     }
 }
 
-type HttpStream = <HttpConnector as Service>::Response;
-type HttpsStream = MaybeHttpsStream<HttpStream>;
+// type HttpStream = <HttpConnector as Service>::Response;
+type HttpsStream = MaybeHttpsStream;
 
 pub type Connecting = Box<Future<Item=Conn, Error=io::Error>>;
 
 pub enum Conn {
     Normal(HttpsStream),
-    Proxied(TlsStream<MaybeHttpsStream<HttpStream>>),
+    Proxied(TlsStream<HttpsStream, ClientSession>),
 }
 
 impl Read for Conn {

@@ -7,9 +7,8 @@ use futures::{Async, Future, Poll};
 use hyper::client::FutureResponse;
 use hyper::header::{Headers, Location, Referer, UserAgent, Accept, Encoding,
                     AcceptEncoding, Range, qitem};
-use native_tls::{TlsConnector, TlsConnectorBuilder};
+use rustls::{ClientConfig, ClientSessionMemoryCache};
 use tokio_core::reactor::Handle;
-
 
 use super::body;
 use super::request::{self, Request, RequestBuilder};
@@ -17,7 +16,8 @@ use super::response::{self, Response};
 use connect::Connector;
 use into_url::to_uri;
 use redirect::{self, RedirectPolicy, check_redirect, remove_sensitive_headers};
-use {Certificate, Identity, IntoUrl, Method, proxy, Proxy, StatusCode, Url};
+
+use {IntoUrl, Method, proxy, Proxy, StatusCode, Url};
 
 static DEFAULT_USER_AGENT: &'static str =
     concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
@@ -69,38 +69,48 @@ struct Config {
     redirect_policy: RedirectPolicy,
     referer: bool,
     timeout: Option<Duration>,
-    tls: TlsConnectorBuilder,
+    tls: ClientConfig,
     dns_threads: usize,
+}
+
+mod danger {
+    use rustls;
+    use webpki;
+
+    pub struct NoCertificateVerification {}
+
+    impl rustls::ServerCertVerifier for NoCertificateVerification {
+        fn verify_server_cert(&self, _roots: &rustls::RootCertStore, _presented_certs: &[rustls::Certificate], _dns_name: webpki::DNSNameRef, _ocsp: &[u8]) -> Result<rustls::ServerCertVerified, rustls::TLSError> {
+            Ok(rustls::ServerCertVerified::assertion())
+        }
+    }
 }
 
 impl ClientBuilder {
     /// Constructs a new `ClientBuilder`
     pub fn new() -> ClientBuilder {
-        match TlsConnector::builder() {
-            Ok(tls_connector_builder) => {
-                let mut headers = Headers::with_capacity(2);
-                headers.set(UserAgent::new(DEFAULT_USER_AGENT));
-                headers.set(Accept::star());
+        let mut tls_client_config = ClientConfig::new();
+        tls_client_config.root_store.add_server_trust_anchors(&::webpki_roots::TLS_SERVER_ROOTS);
+        let client_cache = ClientSessionMemoryCache::new(64);
+        tls_client_config.set_persistence(client_cache);
 
-                ClientBuilder {
-                    config: Some(Config {
-                        gzip: true,
-                        headers: headers,
-                        hostname_verification: true,
-                        proxies: Vec::new(),
-                        redirect_policy: RedirectPolicy::default(),
-                        referer: true,
-                        timeout: None,
-                        tls: tls_connector_builder,
-                        dns_threads: 4,
-                    }),
-                    err: None,
-                }
-            },
-            Err(e) => ClientBuilder {
-                config: None,
-                err: Some(::error::from(e)),
-            }
+        let mut headers = Headers::with_capacity(2);
+        headers.set(UserAgent::new(DEFAULT_USER_AGENT));
+        headers.set(Accept::star());
+
+        ClientBuilder {
+            config: Some(Config {
+                gzip: true,
+                headers: headers,
+                hostname_verification: true,
+                proxies: Vec::new(),
+                redirect_policy: RedirectPolicy::default(),
+                referer: true,
+                timeout: None,
+                tls: tls_client_config,
+                dns_threads: 4,
+            }),
+            err: None,
         }
     }
 
@@ -122,9 +132,13 @@ impl ClientBuilder {
             .take()
             .expect("ClientBuilder cannot be reused after building a Client");
 
-        let tls = try_!(config.tls.build());
+        let mut tls = config.tls;
 
         let proxies = Arc::new(config.proxies);
+
+        if !config.hostname_verification {
+            tls.dangerous().set_certificate_verifier(Arc::new(danger::NoCertificateVerification {}));
+        }
 
         let mut connector = Connector::new(config.dns_threads, tls, proxies.clone(), handle);
         if !config.hostname_verification {
@@ -151,26 +165,26 @@ impl ClientBuilder {
     ///
     /// This can be used to connect to a server that has a self-signed
     /// certificate for example.
-    pub fn add_root_certificate(&mut self, cert: Certificate) -> &mut ClientBuilder {
-        if let Some(config) = config_mut(&mut self.config, &self.err) {
-            let cert = ::tls::cert(cert);
-            if let Err(e) = config.tls.add_root_certificate(cert) {
-                self.err = Some(::error::from(e));
-            }
-        }
-        self
-    }
+    // pub fn add_root_certificate(&mut self, cert: Certificate) -> &mut ClientBuilder {
+    //     if let Some(config) = config_mut(&mut self.config, &self.err) {
+    //         let cert = ::tls::cert(cert);
+    //         if let Err(e) = config.tls.add_root_certificate(cert) {
+    //             self.err = Some(::error::from(e));
+    //         }
+    //     }
+    //     self
+    // }
 
     /// Sets the identity to be used for client certificate authentication.
-    pub fn identity(&mut self, identity: Identity) -> &mut ClientBuilder {
-        if let Some(config) = config_mut(&mut self.config, &self.err) {
-            let pkcs12 = ::tls::pkcs12(identity);
-            if let Err(e) = config.tls.identity(pkcs12) {
-                self.err = Some(::error::from(e));
-            }
-        }
-        self
-    }
+    // pub fn identity(&mut self, identity: Identity) -> &mut ClientBuilder {
+    //     if let Some(config) = config_mut(&mut self.config, &self.err) {
+    //         let pkcs12 = ::tls::pkcs12(identity);
+    //         if let Err(e) = config.tls.identity(pkcs12) {
+    //             self.err = Some(::error::from(e));
+    //         }
+    //     }
+    //     self
+    // }
 
     /// Disable hostname verification.
     ///

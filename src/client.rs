@@ -8,7 +8,8 @@ use futures::sync::{mpsc, oneshot};
 
 use request::{self, Request, RequestBuilder};
 use response::{self, Response};
-use {async_impl, header, Certificate, Identity, Method, IntoUrl, Proxy, RedirectPolicy, wait};
+
+use {async_impl, header, Method, IntoUrl, Proxy, RedirectPolicy, wait};
 
 /// A `Client` to make Requests with.
 ///
@@ -110,10 +111,10 @@ impl ClientBuilder {
     /// # Errors
     ///
     /// This method fails if adding root certificate was unsuccessful.
-    pub fn add_root_certificate(&mut self, cert: Certificate) -> &mut ClientBuilder {
-        self.inner.add_root_certificate(cert);
-        self
-    }
+    // pub fn add_root_certificate(&mut self, cert: Certificate) -> &mut ClientBuilder {
+    //     self.inner.add_root_certificate(cert);
+    //     self
+    // }
 
     /// Sets the identity to be used for client certificate authentication.
     ///
@@ -138,10 +139,10 @@ impl ClientBuilder {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn identity(&mut self, identity: Identity) -> &mut ClientBuilder {
-        self.inner.identity(identity);
-        self
-    }
+    // pub fn identity(&mut self, identity: Identity) -> &mut ClientBuilder {
+    //     self.inner.identity(identity);
+    //     self
+    // }
 
 
     /// Disable hostname verification.
