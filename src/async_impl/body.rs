@@ -37,6 +37,13 @@ impl Stream for Body {
     }
 }
 
+impl From<::hyper::Body> for Body {
+    #[inline]
+    fn from(body: ::hyper::Body) -> Body {
+        hyper_body(body)
+    }
+}
+
 impl From<Bytes> for Body {
     #[inline]
     fn from(bytes: Bytes) -> Body {
@@ -132,6 +139,13 @@ pub fn take(body: &mut Body) -> Body {
 pub fn empty() -> Body {
     Body {
         inner: Inner::Hyper(::hyper::Body::empty()),
+    }
+}
+
+#[inline]
+pub fn hyper_body(body: ::hyper::Body) -> Body {
+    Body {
+        inner: Inner::Hyper(body)
     }
 }
 

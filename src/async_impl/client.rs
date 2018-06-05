@@ -7,9 +7,8 @@ use futures::{Async, Future, Poll};
 use hyper::client::FutureResponse;
 use hyper::header::{Headers, Location, Referer, UserAgent, Accept, Encoding,
                     AcceptEncoding, Range, qitem};
-use native_tls::{TlsConnector, TlsConnectorBuilder};
+use rustls::{ClientConfig, ClientSessionMemoryCache};
 use tokio_core::reactor::Handle;
-
 
 use super::body;
 use super::request::{self, Request, RequestBuilder};
@@ -17,7 +16,7 @@ use super::response::{self, Response};
 use connect::Connector;
 use into_url::to_uri;
 use redirect::{self, RedirectPolicy, check_redirect, remove_sensitive_headers};
-use {Certificate, IntoUrl, Method, proxy, Proxy, StatusCode, Url};
+use {IntoUrl, Method, proxy, Proxy, StatusCode, Url};
 
 static DEFAULT_USER_AGENT: &'static str =
     concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
@@ -40,7 +39,20 @@ struct Config {
     redirect_policy: RedirectPolicy,
     referer: bool,
     timeout: Option<Duration>,
-    tls: TlsConnectorBuilder,
+    tls: ClientConfig,
+}
+
+mod danger {
+    use rustls;
+    use webpki;
+
+    pub struct NoCertificateVerification {}
+
+    impl rustls::ServerCertVerifier for NoCertificateVerification {
+        fn verify_server_cert(&self, _roots: &rustls::RootCertStore, _presented_certs: &[rustls::Certificate], _dns_name: webpki::DNSNameRef, _ocsp: &[u8]) -> Result<rustls::ServerCertVerified, rustls::TLSError> {
+            Ok(rustls::ServerCertVerified::assertion())
+        }
+    }
 }
 
 impl ClientBuilder {
@@ -50,7 +62,11 @@ impl ClientBuilder {
     ///
     /// This method fails if native TLS backend cannot be created.
     pub fn new() -> ::Result<ClientBuilder> {
-        let tls_connector_builder = try_!(TlsConnector::builder());
+        let mut tls_client_config = ClientConfig::new();
+        tls_client_config.root_store.add_server_trust_anchors(&::webpki_roots::TLS_SERVER_ROOTS);
+        let client_cache = ClientSessionMemoryCache::new(64);
+        tls_client_config.set_persistence(client_cache);
+
         Ok(ClientBuilder {
             config: Some(Config {
                 gzip: true,
@@ -59,7 +75,7 @@ impl ClientBuilder {
                 redirect_policy: RedirectPolicy::default(),
                 referer: true,
                 timeout: None,
-                tls: tls_connector_builder,
+                tls: tls_client_config,
             })
         })
     }
@@ -77,9 +93,13 @@ impl ClientBuilder {
     pub fn build(&mut self, handle: &Handle) -> ::Result<Client> {
         let config = self.take_config();
 
-        let tls = try_!(config.tls.build());
+        let mut tls = config.tls;
 
         let proxies = Arc::new(config.proxies);
+
+        if !config.hostname_verification {
+            tls.dangerous().set_certificate_verifier(Arc::new(danger::NoCertificateVerification {}));
+        }
 
         let mut connector = Connector::new(tls, proxies.clone(), handle);
         if !config.hostname_verification {
@@ -109,11 +129,11 @@ impl ClientBuilder {
     /// # Errors
     ///
     /// This method fails if adding root certificate was unsuccessful.
-    pub fn add_root_certificate(&mut self, cert: Certificate) -> ::Result<&mut ClientBuilder> {
-        let cert = ::tls::cert(cert);
-        try_!(self.config_mut().tls.add_root_certificate(cert));
-        Ok(self)
-    }
+    // pub fn add_root_certificate(&mut self, cert: Certificate) -> ::Result<&mut ClientBuilder> {
+    //     let cert = ::tls::cert(cert);
+    //     try_!(self.config_mut().tls.add_root_certificate(cert));
+    //     Ok(self)
+    // }
 
     /// Disable hostname verification.
     ///
@@ -193,7 +213,7 @@ impl ClientBuilder {
 
 type HyperClient = ::hyper::Client<Connector>;
 
-fn create_hyper_client(tls: TlsConnector, proxies: Arc<Vec<Proxy>>, handle: &Handle) -> HyperClient {
+fn create_hyper_client(tls: ClientConfig, proxies: Arc<Vec<Proxy>>, handle: &Handle) -> HyperClient {
     ::hyper::Client::configure()
         .connector(Connector::new(tls, proxies, handle))
         .build(handle)

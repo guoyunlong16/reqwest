@@ -1,5 +1,3 @@
-#![deny(warnings)]
-#![deny(missing_docs)]
 #![deny(missing_debug_implementations)]
 #![doc(html_root_url = "https://docs.rs/reqwest/0.7.3")]
 
@@ -123,37 +121,37 @@ extern crate bytes;
 #[macro_use]
 extern crate futures;
 extern crate hyper;
-extern crate hyper_tls;
+extern crate tokio_rustls;
+extern crate hyper_rustls;
+extern crate rustls;
+extern crate webpki;
+extern crate webpki_roots;
 #[macro_use]
 extern crate log;
 extern crate libflate;
 extern crate mime_guess;
-extern crate native_tls;
 extern crate serde;
 extern crate serde_json;
 extern crate serde_urlencoded;
 extern crate tokio_core;
 extern crate tokio_io;
-extern crate tokio_tls;
+
 extern crate url;
 extern crate uuid;
 
-pub use hyper::header;
-pub use hyper::mime;
-pub use hyper::Method;
-pub use hyper::StatusCode;
+pub use hyper::{header, mime, Method, StatusCode};
 pub use url::Url;
 pub use url::ParseError as UrlError;
 
 pub use self::client::{Client, ClientBuilder};
-pub use self::error::{Error, Result};
+pub use self::error::{Error, Result, from};
 pub use self::body::Body;
 pub use self::into_url::IntoUrl;
 pub use self::proxy::Proxy;
 pub use self::redirect::{RedirectAction, RedirectAttempt, RedirectPolicy};
 pub use self::request::{Request, RequestBuilder};
 pub use self::response::Response;
-pub use self::tls::Certificate;
+//pub use self::tls::Certificate;
 
 
 // this module must be first because of the `try_` macro
@@ -170,7 +168,7 @@ mod proxy;
 mod redirect;
 mod request;
 mod response;
-mod tls;
+// mod tls;
 mod wait;
 
 pub mod multipart;

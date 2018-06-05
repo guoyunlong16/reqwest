@@ -247,7 +247,7 @@ impl StdError for Error {
 pub enum Kind {
     Http(::hyper::Error),
     Url(::url::ParseError),
-    Tls(::native_tls::Error),
+    Tls(::rustls::TLSError),
     Io(io::Error),
     UrlEncoded(::serde_urlencoded::ser::Error),
     Json(::serde_json::Error),
@@ -297,8 +297,8 @@ impl From<::serde_json::Error> for Kind {
     }
 }
 
-impl From<::native_tls::Error> for Kind {
-    fn from(err: ::native_tls::Error) -> Kind {
+impl From<::rustls::TLSError> for Kind {
+    fn from(err: ::rustls::TLSError) -> Kind {
         Kind::Tls(err)
     }
 }

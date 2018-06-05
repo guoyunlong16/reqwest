@@ -8,7 +8,7 @@ use futures::sync::{mpsc, oneshot};
 
 use request::{self, Request, RequestBuilder};
 use response::{self, Response};
-use {async_impl, Certificate, Method, IntoUrl, Proxy, RedirectPolicy, wait};
+use {async_impl, Method, IntoUrl, Proxy, RedirectPolicy, wait};
 
 /// A `Client` to make Requests with.
 ///
@@ -114,10 +114,10 @@ impl ClientBuilder {
     /// # Errors
     ///
     /// This method fails if adding root certificate was unsuccessful.
-    pub fn add_root_certificate(&mut self, cert: Certificate) -> ::Result<&mut ClientBuilder> {
-        self.inner.add_root_certificate(cert)?;
-        Ok(self)
-    }
+    // pub fn add_root_certificate(&mut self, cert: Certificate) -> ::Result<&mut ClientBuilder> {
+    //     self.inner.add_root_certificate(cert)?;
+    //     Ok(self)
+    // }
 
     /// Disable hostname verification.
     ///
@@ -387,7 +387,11 @@ impl ClientHandle {
         let (tx, rx) = oneshot::channel();
         let (req, body) = request::async(req);
         let url = req.url().clone();
-        self.inner.tx.as_ref().expect("core thread exited early").send((req, tx)).expect("core thread panicked");
+        self.inner.tx
+            .as_ref()
+            .expect("core thread exited early")
+            .unbounded_send((req, tx))
+            .expect("core thread panicked");
 
         if let Some(body) = body {
             try_!(body.send(), &url);
