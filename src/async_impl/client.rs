@@ -91,8 +91,8 @@ impl ClientBuilder {
     pub fn new() -> ClientBuilder {
         let mut tls_client_config = ClientConfig::new();
         tls_client_config.root_store.add_server_trust_anchors(&::webpki_roots::TLS_SERVER_ROOTS);
-        let client_cache = ClientSessionMemoryCache::new(64);
-        tls_client_config.set_persistence(client_cache);
+        // let client_cache = ClientSessionMemoryCache::new(64);
+        // tls_client_config.set_persistence(client_cache);
 
         let mut headers = Headers::with_capacity(2);
         headers.set(UserAgent::new(DEFAULT_USER_AGENT));
