@@ -14,7 +14,7 @@ bytes = "0.4"
 encoding_rs = "0.7"
 futures = "0.1.15"
 hyper = "0.11.22"
-libflate = "0.1.11"
+libflate = { git = "https://github.com/passchaos/libflate", branch = "0.1.14-sdk", rev = "81cdec"}
 log = "0.4"
 mime_guess = "2.0.0-alpha.2"
 serde = "1.0"
