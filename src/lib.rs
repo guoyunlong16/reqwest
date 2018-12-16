@@ -166,6 +166,17 @@ extern crate tokio_io;
 extern crate url;
 extern crate uuid;
 
+#[cfg(feature = "rustls-tls")]
+extern crate hyper_rustls;
+#[cfg(feature = "rustls-tls")]
+extern crate tokio_rustls;
+#[cfg(feature = "rustls-tls")]
+extern crate webpki;
+#[cfg(feature = "rustls-tls")]
+extern crate webpki_roots;
+#[cfg(feature = "rustls-tls")]
+extern crate rustls;
+
 pub use hyper::header;
 pub use hyper::Method;
 pub use hyper::{StatusCode, Version};

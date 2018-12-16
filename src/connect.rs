@@ -5,11 +5,20 @@ use hyper::client::{HttpConnector};
 use hyper::client::connect::{Connect, Connected, Destination};
 #[cfg(feature = "default-tls")]
 use hyper_tls::{HttpsConnector, MaybeHttpsStream};
+#[cfg(feature = "rustls-tls")]
+use hyper_rustls::{HttpsConnector, MaybeHttpsStream};
 #[cfg(feature = "default-tls")]
 use native_tls::TlsConnector;
+#[cfg(feature = "rustls-tls")]
+use rustls::{ClientConfig, ClientSession};
+#[cfg(feature = "tls")]
 use tokio_io::{AsyncRead, AsyncWrite};
 #[cfg(feature = "default-tls")]
 use connect_async::{TlsConnectorExt, TlsStream};
+#[cfg(feature = "rustls-tls")]
+use tokio_rustls::{TlsConnector, TlsStream};
+#[cfg(feature = "rustls-tls")]
+use webpki::DNSNameRef;
 
 use std::io::{self, Read, Write};
 use std::sync::Arc;
@@ -17,17 +26,17 @@ use std::sync::Arc;
 use Proxy;
 
 pub(crate) struct Connector {
-    #[cfg(feature = "default-tls")]
+    #[cfg(feature = "tls")]
     http: HttpsConnector<HttpConnector>,
-    #[cfg(not(feature = "default-tls"))]
+    #[cfg(not(feature = "tls"))]
     http: HttpConnector,
     proxies: Arc<Vec<Proxy>>,
-    #[cfg(feature = "default-tls")]
+    #[cfg(feature = "tls")]
     tls: TlsConnector,
 }
 
 impl Connector {
-    #[cfg(not(feature = "default-tls"))]
+    #[cfg(not(feature = "tls"))]
     pub(crate) fn new(threads: usize, proxies: Arc<Vec<Proxy>>) -> Connector {
         let http = HttpConnector::new(threads);
         Connector {
@@ -47,6 +56,19 @@ impl Connector {
             tls,
         }
     }
+    #[cfg(feature = "rustls-tls")]
+    pub(crate) fn new(threads: usize, tls_config: ClientConfig, proxies: Arc<Vec<Proxy>>) -> Connector {
+        let mut http = HttpConnector::new(threads);
+        http.enforce_http(false);
+        let http = HttpsConnector::from((http, tls_config.clone()));
+
+        let tls = TlsConnector::from(Arc::new(tls_config));
+        Connector {
+            http,
+            proxies,
+            tls,
+        }
+    }
 }
 
 impl Connect for Connector {
@@ -55,9 +77,10 @@ impl Connect for Connector {
     type Future = Connecting;
 
     fn connect(&self, dst: Destination) -> Self::Future {
+        println!("proxy: {:?}", self.proxies);
         for prox in self.proxies.iter() {
             if let Some(puri) = prox.intercept(&dst) {
-                trace!("proxy({:?}) intercepts {:?}", puri, dst);
+                println!("proxy({:?}) intercepts {:?}", puri, dst);
                 let mut ndst = dst.clone();
                 let new_scheme = puri
                     .scheme_part()
@@ -71,7 +94,7 @@ impl Connect for Connector {
 
                 ndst.set_port(puri.port_part().map(|p| p.as_u16()));
 
-                #[cfg(feature = "default-tls")]
+                #[cfg(feature = "tls")]
                 {
                 if dst.scheme() == "https" {
                     let host = dst.host().to_owned();
@@ -79,10 +102,22 @@ impl Connect for Connector {
                     let tls = self.tls.clone();
                     return Box::new(self.http.connect(ndst).and_then(move |(conn, connected)| {
                         trace!("tunneling HTTPS over proxy");
+                        println!("asss");
+
                         tunnel(conn, host.clone(), port)
                             .and_then(move |tunneled| {
-                                tls.connect_async(&host, tunneled)
-                                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+                                #[cfg(feature = "default-tls")]
+                                {
+                                    tls.connect_async(&host, tunneled)
+                                        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+                                }
+
+                                #[cfg(feature = "rustls-tls")]
+                                {
+                                    let dns_name = DNSNameRef::from_ascii_str_danger(&host);
+                                    tls.connect(dns_name, tunneled)
+                                        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+                                }
                             })
                             .map(|io| (Conn::Proxied(io), connected.proxy(true)))
                     }));
@@ -96,19 +131,21 @@ impl Connect for Connector {
 }
 
 type HttpStream = <HttpConnector as Connect>::Transport;
-#[cfg(feature = "default-tls")]
+#[cfg(feature = "tls")]
 type HttpsStream = MaybeHttpsStream<HttpStream>;
 
 
 pub(crate) type Connecting = Box<Future<Item=(Conn, Connected), Error=io::Error> + Send>;
 
 pub(crate) enum Conn {
-    #[cfg(feature = "default-tls")]
+    #[cfg(feature = "tls")]
     Normal(HttpsStream),
-    #[cfg(not(feature = "default-tls"))]
+    #[cfg(not(feature = "tls"))]
     Normal(HttpStream),
     #[cfg(feature = "default-tls")]
-    Proxied(TlsStream<MaybeHttpsStream<HttpStream>>),
+    Proxied(TlsStream<HttpsStream>),
+    #[cfg(feature = "rustls-tls")]
+    Proxied(TlsStream<HttpsStream, ClientSession>),
 }
 
 impl Read for Conn {
@@ -116,7 +153,7 @@ impl Read for Conn {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         match *self {
             Conn::Normal(ref mut s) => s.read(buf),
-            #[cfg(feature = "default-tls")]
+            #[cfg(feature = "tls")]
             Conn::Proxied(ref mut s) => s.read(buf),
         }
     }
@@ -127,7 +164,7 @@ impl Write for Conn {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         match *self {
             Conn::Normal(ref mut s) => s.write(buf),
-            #[cfg(feature = "default-tls")]
+            #[cfg(feature = "tls")]
             Conn::Proxied(ref mut s) => s.write(buf),
         }
     }
@@ -136,7 +173,7 @@ impl Write for Conn {
     fn flush(&mut self) -> io::Result<()> {
         match *self {
             Conn::Normal(ref mut s) => s.flush(),
-            #[cfg(feature = "default-tls")]
+            #[cfg(feature = "tls")]
             Conn::Proxied(ref mut s) => s.flush(),
         }
     }
@@ -146,7 +183,7 @@ impl AsyncRead for Conn {
     unsafe fn prepare_uninitialized_buffer(&self, buf: &mut [u8]) -> bool {
         match *self {
             Conn::Normal(ref s) => s.prepare_uninitialized_buffer(buf),
-            #[cfg(feature = "default-tls")]
+            #[cfg(feature = "tls")]
             Conn::Proxied(ref s) => s.prepare_uninitialized_buffer(buf),
         }
     }
@@ -154,7 +191,7 @@ impl AsyncRead for Conn {
     fn read_buf<B: BufMut>(&mut self, buf: &mut B) -> Poll<usize, io::Error> {
         match *self {
             Conn::Normal(ref mut s) => s.read_buf(buf),
-            #[cfg(feature = "default-tls")]
+            #[cfg(feature = "tls")]
             Conn::Proxied(ref mut s) => s.read_buf(buf),
         }
     }
@@ -164,7 +201,7 @@ impl AsyncWrite for Conn {
     fn shutdown(&mut self) -> Poll<(), io::Error> {
         match *self {
             Conn::Normal(ref mut s) => s.shutdown(),
-            #[cfg(feature = "default-tls")]
+            #[cfg(feature = "tls")]
             Conn::Proxied(ref mut s) => s.shutdown(),
         }
     }
@@ -172,13 +209,13 @@ impl AsyncWrite for Conn {
     fn write_buf<B: Buf>(&mut self, buf: &mut B) -> Poll<usize, io::Error> {
         match *self {
             Conn::Normal(ref mut s) => s.write_buf(buf),
-            #[cfg(feature = "default-tls")]
+            #[cfg(feature = "tls")]
             Conn::Proxied(ref mut s) => s.write_buf(buf),
         }
     }
 }
 
-#[cfg(feature = "default-tls")]
+#[cfg(feature = "tls")]
 fn tunnel<T>(conn: T, host: String, port: u16) -> Tunnel<T> {
      let buf = format!("\
         CONNECT {0}:{1} HTTP/1.1\r\n\
@@ -193,20 +230,20 @@ fn tunnel<T>(conn: T, host: String, port: u16) -> Tunnel<T> {
      }
 }
 
-#[cfg(feature = "default-tls")]
+#[cfg(feature = "tls")]
 struct Tunnel<T> {
     buf: io::Cursor<Vec<u8>>,
     conn: Option<T>,
     state: TunnelState,
 }
 
-#[cfg(feature = "default-tls")]
+#[cfg(feature = "tls")]
 enum TunnelState {
     Writing,
     Reading
 }
 
-#[cfg(feature = "default-tls")]
+#[cfg(feature = "tls")]
 impl<T> Future for Tunnel<T>
 where T: AsyncRead + AsyncWrite {
     type Item = T;
@@ -242,7 +279,7 @@ where T: AsyncRead + AsyncWrite {
     }
 }
 
-#[cfg(feature = "default-tls")]
+#[cfg(feature = "tls")]
 #[inline]
 fn tunnel_eof() -> io::Error {
     io::Error::new(
