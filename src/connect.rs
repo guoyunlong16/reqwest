@@ -1,8 +1,8 @@
 use bytes::{Buf, BufMut};
 use futures::{Future, Poll};
 use http::uri::Scheme;
-use hyper::client::{HttpConnector};
-use hyper::client::connect::{Connect, Connected, Destination};
+use hyper::client::HttpConnector;
+use hyper::client::connect::{Connect, Connected, Destination, dns::TokioThreadpoolGaiResolver};
 #[cfg(feature = "default-tls")]
 use hyper_tls::{HttpsConnector, MaybeHttpsStream};
 #[cfg(feature = "rustls-tls")]
@@ -27,7 +27,7 @@ use Proxy;
 
 pub(crate) struct Connector {
     #[cfg(feature = "tls")]
-    http: HttpsConnector<HttpConnector>,
+    http: HttpsConnector<HttpConnector<TokioThreadpoolGaiResolver>>,
     #[cfg(not(feature = "tls"))]
     http: HttpConnector,
     proxies: Arc<Vec<Proxy>>,
@@ -37,16 +37,16 @@ pub(crate) struct Connector {
 
 impl Connector {
     #[cfg(not(feature = "tls"))]
-    pub(crate) fn new(threads: usize, proxies: Arc<Vec<Proxy>>) -> Connector {
-        let http = HttpConnector::new(threads);
+    pub(crate) fn new(proxies: Arc<Vec<Proxy>>) -> Connector {
+        let http = HttpConnector::new_with_tokio_threadpool_resolver();
         Connector {
             http,
             proxies,
         }
     }
     #[cfg(feature = "default-tls")]
-    pub(crate) fn new(threads: usize, tls: TlsConnector, proxies: Arc<Vec<Proxy>>) -> Connector {
-        let mut http = HttpConnector::new(threads);
+    pub(crate) fn new(tls: TlsConnector, proxies: Arc<Vec<Proxy>>) -> Connector {
+        let mut http = HttpConnector::new_with_tokio_threadpool_resolver();
         http.enforce_http(false);
         let http = HttpsConnector::from((http, tls.clone()));
 
@@ -57,8 +57,8 @@ impl Connector {
         }
     }
     #[cfg(feature = "rustls-tls")]
-    pub(crate) fn new(threads: usize, tls_config: ClientConfig, proxies: Arc<Vec<Proxy>>) -> Connector {
-        let mut http = HttpConnector::new(threads);
+    pub(crate) fn new(tls_config: ClientConfig, proxies: Arc<Vec<Proxy>>) -> Connector {
+        let mut http = HttpConnector::new_with_tokio_threadpool_resolver();
         http.enforce_http(false);
         let http = HttpsConnector::from((http, tls_config.clone()));
 

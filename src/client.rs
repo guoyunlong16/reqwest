@@ -223,9 +223,9 @@ impl ClientBuilder {
     ///   an `Accept-Encoding` **and** `Range` values, the `Accept-Encoding` header is set to `gzip`.
     ///   The body is **not** automatically inflated.
     /// - When receiving a response, if it's headers contain a `Content-Encoding` value that
-    ///   equals to `gzip`, both values `Content-Encoding` and `Content-Length` are removed from the 
+    ///   equals to `gzip`, both values `Content-Encoding` and `Content-Length` are removed from the
     ///   headers' set. The body is automatically deinflated.
-    /// 
+    ///
     /// Default is enabled.
     pub fn gzip(self, enable: bool) -> ClientBuilder {
         self.with_inner(|inner| inner.gzip(enable))
@@ -260,13 +260,6 @@ impl ClientBuilder {
     {
         self.timeout = Timeout(timeout.into());
         self
-    }
-
-    /// Set the number of threads to use for DNS
-    ///
-    /// Default is 4
-    pub fn dns_threads(self, threads: usize) -> ClientBuilder {
-        self.with_inner(|inner| inner.dns_threads(threads))
     }
 
     fn with_inner<F>(mut self, func: F) -> ClientBuilder

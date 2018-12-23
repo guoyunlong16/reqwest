@@ -57,7 +57,6 @@ struct Config {
     tls: TlsConnectorBuilder,
     #[cfg(feature = "rustls-tls")]
     tls_config: ClientConfig,
-    dns_threads: usize,
 }
 
 #[cfg(feature = "rustls-tls")]
@@ -109,7 +108,6 @@ impl ClientBuilder {
                     }
                     config
                 },
-                dns_threads: 4,
             },
         }
     }
@@ -122,7 +120,6 @@ impl ClientBuilder {
     pub fn build(self) -> ::Result<Client> {
         let config = self.config;
 
-
         let connector = {
             #[cfg(feature = "default-tls")]
             {
@@ -134,7 +131,7 @@ impl ClientBuilder {
 
                 let proxies = Arc::new(config.proxies);
 
-                Connector::new(config.dns_threads, tls, proxies.clone())
+                Connector::new(tls, proxies.clone())
             }
 
             #[cfg(feature = "rustls-tls")]
@@ -146,14 +143,14 @@ impl ClientBuilder {
 
                 let proxies = Arc::new(config.proxies);
 
-                Connector::new(config.dns_threads, tls_config, proxies.clone())
+                Connector::new(tls_config, proxies.clone())
             }
 
             #[cfg(not(feature = "tls"))]
             {
                 let proxies = Arc::new(config.proxies);
 
-                Connector::new(config.dns_threads, proxies.clone())
+                Connector::new(proxies.clone())
             }
         };
 
@@ -272,12 +269,6 @@ impl ClientBuilder {
     /// Set a timeout for both the read and write operations of a client.
     pub fn timeout(mut self, timeout: Duration) -> ClientBuilder {
         self.config.timeout = Some(timeout);
-        self
-    }
-
-    /// Set number of DNS threads.
-    pub fn dns_threads(mut self, threads: usize) -> ClientBuilder {
-        self.config.dns_threads = threads;
         self
     }
 }
