@@ -31,11 +31,11 @@ tokio-io = "0.1"
 url = "1.2"
 uuid = { version = "0.7", features = ["v4"] }
 
-hyper-rustls = { version = "0.15.0", optional = true }
-tokio-rustls = { version = "0.8.0", optional = true }
-rustls = { version = "0.14.0", features = ["dangerous_configuration"], optional = true }
-webpki = { version = "0.18.1", optional = true }
-webpki-roots = { version = "0.15.0", optional = true }
+hyper-rustls = { version = "0.15.1", optional = true }
+tokio-rustls = { git = "https://github.com/passchaos/tokio-rustls", branch = "v0.8.1-sdk-tmp", optional = true }
+rustls = { version = "0.15.0", features = ["dangerous_configuration"], optional = true }
+webpki = { version = "0.19.0", optional = true }
+webpki-roots = { version = "0.16.0", optional = true }
 
 [dev-dependencies]
 env_logger = "0.6"
@@ -53,5 +53,5 @@ native-tls-vendored = ["native-tls/vendored"]
 rustdoc-args = ["--cfg", "docs_rs_workaround"]
 
 [replace]
-"webpki:0.18.1" = { git = "https://github.com/passchaos/webpki", rev = "251388" }
-"hyper-rustls:0.15.0" = { git = "https://github.com/passchaos/hyper-rustls", rev = "54f03f" }
+"webpki:0.19.0" = { git = "https://github.com/passchaos/webpki", branch = "v0.19.0-sdk-tmp" }
+"hyper-rustls:0.15.1" = { git = "https://github.com/passchaos/hyper-rustls", branch = "v0.15.1-sdk-tmp" }
