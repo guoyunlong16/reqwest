@@ -1,6 +1,8 @@
 use futures::Future;
 use http::uri::Scheme;
 use hyper::client::connect::{Connect, Connected, Destination};
+#[cfg(feature = "gai-resolver")]
+use hyper::client::connect::dns::TokioThreadpoolGaiResolver;
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_timer::Timeout;
 
@@ -25,7 +27,9 @@ use proxy::{Proxy, ProxyScheme};
 
 #[cfg(feature = "trust-dns")]
 type HttpConnector = ::hyper::client::HttpConnector<TrustDnsResolver>;
-#[cfg(not(feature = "trust-dns"))]
+#[cfg(feature = "gai-resolver")]
+type HttpConnector = ::hyper::client::HttpConnector<TokioThreadpoolGaiResolver>;
+#[cfg(not(any(feature = "trust-dns", feature = "gai-resolver")))]
 type HttpConnector = ::hyper::client::HttpConnector;
 
 
@@ -211,7 +215,12 @@ fn http_connector() -> ::Result<HttpConnector> {
         .map_err(::error::dns_system_conf)
 }
 
-#[cfg(not(feature = "trust-dns"))]
+#[cfg(feature = "gai-resolver")]
+fn http_connector() -> ::Result<HttpConnector> {
+    Ok(HttpConnector::new_with_tokio_threadpool_resolver())
+}
+
+#[cfg(not(any(feature = "trust-dns", feature = "gai-resolver")))]
 fn http_connector() -> ::Result<HttpConnector> {
     Ok(HttpConnector::new(4))
 }
@@ -370,7 +379,7 @@ impl Connect for Connector {
                                         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
                                 })
                                 .map(|io| {
-                                    let connected = if io.get_ref().1.get_alpn_protocol() == Some(b"h2") {
+                                    let connected = if io.get_ref().1.get_alpn_protocol() == Some("h2") {
                                         connected.negotiated_h2()
                                     } else {
                                         connected

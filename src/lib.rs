@@ -282,6 +282,18 @@ pub mod async {
     };
 }
 
+/// Http Version
+#[allow(dead_code)]
+#[derive(Debug, PartialEq)]
+pub enum HttpVersion {
+    /// http1.1
+    Http11,
+    /// h2
+    H2,
+    /// http1.1 or h2 alpn
+    DualAlpn,
+}
+
 /// Shortcut method to quickly make a `GET` request.
 ///
 /// See also the methods on the [`reqwest::Response`](./struct.Response.html)

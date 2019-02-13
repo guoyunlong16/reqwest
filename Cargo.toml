@@ -18,9 +18,12 @@ base64 = "0.10"
 bytes = "0.4"
 encoding_rs = "0.8"
 futures = "0.1.23"
-http = "0.1.15"
-hyper = "0.12.22"
+#http = "0.1.15"
+#hyper = "0.12.22"
 flate2 = { version = "^1.0.7", default-features = false, features = ["rust_backend"] }
+http = "0.1.14"
+hyper = "0.12.19"
+libflate = "0.1.18"
 log = "0.4"
 mime = "0.3.7"
 mime_guess = "2.0"
@@ -34,21 +37,26 @@ tokio-threadpool = "0.1.8" # a minimum version so tokio compiles
 tokio-timer = "0.2.6" # a minimum version so trust-dns-resolver compiles
 url = "1.2"
 uuid = { version = "0.7", features = ["v4"] }
-
-# Optional deps...
-
-hyper-old-types = { version = "0.11", optional = true, features = ["compat"] }
-hyper-rustls = { version = "^0.17.1", optional = true }
-hyper-tls = { version = "0.3.2", optional = true }
-native-tls = { version = "0.2", optional = true }
-rustls = { version = "0.16", features = ["dangerous_configuration"], optional = true }
-socks = { version = "0.3.2", optional = true }
-tokio-rustls = { version = "0.10", optional = true }
-trust-dns-resolver = { version = "0.11", optional = true }
-webpki-roots = { version = "0.17", optional = true }
 cookie_store = "0.7.0"
 cookie = "0.12.0"
 time = "0.1.42"
+
+# Optional deps...
+
+#hyper-old-types = { version = "0.11", optional = true, features = ["compat"] }
+hyper-old-types = { version = "0.11", optional = true, features = ["compat"] }
+hyper-rustls = { version = "0.15.1", optional = true }
+#hyper-tls = { version = "0.3", optional = true }
+hyper-tls = { version = "0.3.2", optional = true }
+native-tls = { version = "0.2", optional = true }
+#rustls = { version = "0.16", features = ["dangerous_configuration"], optional = true }
+rustls = { version = "0.14", features = ["dangerous_configuration"], optional = true }
+socks = { version = "0.3.2", optional = true }
+#tokio-rustls = { version = "0.10", optional = true }
+tokio-rustls = { version = "0.8", optional = true }
+trust-dns-resolver = { version = "0.11", optional = true }
+#webpki-roots = { version = "0.17", optional = true }
+webpki-roots = { version = "0.15", optional = true }
 
 [dev-dependencies]
 env_logger = "0.6"
@@ -59,8 +67,12 @@ libflate = "0.1"
 doc-comment = "0.3"
 bytes = "0.4"
 
+[target.'cfg(windows)'.dependencies]
+winreg = "0.6"
+
 [features]
-default = ["default-tls"]
+#default = ["rustls-tls", "gai-resolver"]
+default = ["default-tls","rustls-tls"]
 
 tls = []
 
@@ -73,5 +85,10 @@ trust-dns = ["trust-dns-resolver"]
 
 hyper-011 = ["hyper-old-types"]
 
-[target.'cfg(windows)'.dependencies]
-winreg = "0.6"
+gai-resolver = []
+
+[replace]
+"webpki:0.18.1" = { git = "https://github.com/passchaos/webpki", rev = "251388" }
+"hyper-rustls:0.15.1" = { git = "https://github.com/passchaos/hyper-rustls", branch = "v0.15.1-sdk-tmp" }
+"hyper:0.12.19" = { git = "https://github.com/XiangQingW/hyper/", branch = "v0.12.19-sdk-tmp" }
+"http:0.1.14" = { git = "https://github.com/passchaos/http", branch = "v0.1.14-sdk" }

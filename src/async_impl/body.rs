@@ -36,8 +36,9 @@ impl Body {
         }
     }
 
+    /// transform hyper::Body
     #[inline]
-    pub(crate) fn wrap(body: ::hyper::Body) -> Body {
+    pub fn wrap(body: ::hyper::Body) -> Body {
         Body {
             inner: Inner::Hyper {
                 body,

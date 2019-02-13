@@ -32,6 +32,7 @@ use tokio::{clock, timer::Delay};
 
 use super::request::{Request, RequestBuilder};
 use super::response::Response;
+use ::HttpVersion;
 use connect::Connector;
 use into_url::{expect_uri, try_uri};
 use cookie;
@@ -87,6 +88,7 @@ struct Config {
     nodelay: bool,
     cookie_store: Option<cookie::CookieStore>,
     http_builder: hyper::client::Builder,
+    http_version: HttpVersion,
 }
 
 impl ClientBuilder {
@@ -122,6 +124,7 @@ impl ClientBuilder {
                 nodelay: false,
                 cookie_store: None,
                 http_builder: hyper::Client::builder(),
+                http_version: HttpVersion::Http11,
             },
         }
     }
@@ -133,7 +136,7 @@ impl ClientBuilder {
     /// This method fails if TLS backend cannot be initialized, or the resolver
     /// cannot load the system configuration.
     pub fn build(self) -> ::Result<Client> {
-        let config = self.config;
+        let mut config = self.config;
         let proxies = Arc::new(config.proxies);
 
         let mut connector = {
@@ -165,6 +168,7 @@ impl ClientBuilder {
                     use ::tls::NoVerifier;
 
                     let mut tls = ::rustls::ClientConfig::new();
+
                     if config.http2_only {
                         tls.set_protocols(&["h2".into()]);
                     } else {
@@ -173,6 +177,21 @@ impl ClientBuilder {
                             "http/1.1".into(),
                         ]);
                     }
+                    //match config.http_version {
+                    //    HttpVersion::Http11 => {
+
+                    //    }
+                    //    HttpVersion::H2 => {
+                    //        tls.set_protocols(&["h2".into()]);
+                    //    }
+                    //    HttpVersion::DualAlpn => {
+                    //        tls.set_protocols(&[
+                    //            "h2".into(),
+                    //            "http/1.1".into(),
+                    //        ]);
+                    //    }
+                    //}
+
                     tls.root_store.add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
 
                     if !config.certs_verification {
@@ -197,6 +216,12 @@ impl ClientBuilder {
 
         connector.set_timeout(config.connect_timeout);
 
+        if config.http2_only {
+            config.http_builder.http2_only(true);
+        }
+        //if config.http_version == HttpVersion::H2 {
+        //    config.http_builder.http2_only(true);
+        //}
         let hyper_client = config.http_builder.build(connector);
 
         let proxies_maybe_http_auth = proxies
@@ -408,6 +433,12 @@ impl ClientBuilder {
     /// a tokio timer enabled.
     pub fn connect_timeout(mut self, timeout: Duration) -> ClientBuilder {
         self.config.connect_timeout = Some(timeout);
+        self
+    }
+
+    /// http version consult
+    pub fn http_version(mut self, http_version: HttpVersion) -> ClientBuilder {
+        self.config.http_version = http_version;
         self
     }
 
