@@ -303,8 +303,8 @@ impl ClientBuilder {
     ///     .h2_prior_knowledge()
     ///     .build().unwrap();
     /// ```
-    pub fn h2_prior_knowledge(self) -> ClientBuilder {
-        self.with_inner(|inner| inner.h2_prior_knowledge())
+    pub fn http_version(self, http_version: ::HttpVersion) -> ClientBuilder {
+        self.with_inner(|inner| inner.http_version(http_version))
     }
 }
 

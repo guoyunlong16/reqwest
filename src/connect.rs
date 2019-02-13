@@ -1,6 +1,8 @@
 use futures::Future;
 use http::uri::Scheme;
 use hyper::client::connect::{Connect, Connected, Destination};
+#[cfg(feature = "gai-resolver")]
+use hyper::client::connect::dns::TokioThreadpoolGaiResolver;
 use tokio_io::{AsyncRead, AsyncWrite};
 
 #[cfg(feature = "default-tls")]
@@ -19,7 +21,9 @@ use Proxy;
 
 #[cfg(feature = "trust-dns")]
 type HttpConnector = ::hyper::client::HttpConnector<TrustDnsResolver>;
-#[cfg(not(feature = "trust-dns"))]
+#[cfg(feature = "gai-resolver")]
+type HttpConnector = ::hyper::client::HttpConnector<TokioThreadpoolGaiResolver>;
+#[cfg(not(any(feature = "trust-dns", feature = "gai-resolver")))]
 type HttpConnector = ::hyper::client::HttpConnector;
 
 
@@ -81,7 +85,12 @@ fn http_connector() -> ::Result<HttpConnector> {
         .map_err(::error::dns_system_conf)
 }
 
-#[cfg(not(feature = "trust-dns"))]
+#[cfg(feature = "gai-resolver")]
+fn http_connector() -> ::Result<HttpConnector> {
+    Ok(HttpConnector::new_with_tokio_threadpool_resolver())
+}
+
+#[cfg(not(any(feature = "trust-dns", feature = "gai-resolver")))]
 fn http_connector() -> ::Result<HttpConnector> {
     Ok(HttpConnector::new(4))
 }
@@ -155,17 +164,15 @@ impl Connect for Connector {
                         use tokio_rustls::webpki::DNSNameRef;
 
                         let host = dst.host().to_owned();
+                        let host_clone = host.clone();
                         let port = dst.port().unwrap_or(443);
                         let tls = tls.clone();
                         return Box::new(http.connect(ndst).and_then(move |(conn, connected)| {
                             trace!("tunneling HTTPS over proxy");
-                            let maybe_dnsname = DNSNameRef::try_from_ascii_str(&host)
-                                .map(|dnsname| dnsname.to_owned())
-                                .map_err(|_| io::Error::new(io::ErrorKind::Other, "Invalid DNS Name"));
                             tunnel(conn, host, port, auth)
-                                .and_then(move |tunneled| Ok((maybe_dnsname?, tunneled)))
-                                .and_then(move |(dnsname, tunneled)| {
-                                    RustlsConnector::from(tls).connect(dnsname.as_ref(), tunneled)
+                                .and_then(move |tunneled| {
+                                    let dnsname = DNSNameRef::from_ascii_str_danger(&host_clone);
+                                    RustlsConnector::from(tls).connect(dnsname, tunneled)
                                         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
                                 })
                                 .map(|io| (Box::new(io) as Conn, connected.proxy(true)))

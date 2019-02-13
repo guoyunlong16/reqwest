@@ -28,6 +28,7 @@ use native_tls::TlsConnector;
 
 use super::request::{Request, RequestBuilder};
 use super::response::Response;
+use ::HttpVersion;
 use connect::Connector;
 use into_url::to_uri;
 use redirect::{self, RedirectPolicy, remove_sensitive_headers};
@@ -75,7 +76,7 @@ struct Config {
     identity: Option<Identity>,
     #[cfg(feature = "tls")]
     tls: TlsBackend,
-    http2_only: bool,
+    http_version: HttpVersion,
 }
 
 impl ClientBuilder {
@@ -105,7 +106,7 @@ impl ClientBuilder {
                 identity: None,
                 #[cfg(feature = "tls")]
                 tls: TlsBackend::default(),
-                http2_only: false,
+                http_version: HttpVersion::Http11,
             },
         }
     }
@@ -144,14 +145,22 @@ impl ClientBuilder {
                     use ::tls::NoVerifier;
 
                     let mut tls = ::rustls::ClientConfig::new();
-                    if config.http2_only {
-                        tls.set_protocols(&["h2".into()]);
-                    } else {
-                        tls.set_protocols(&[
-                            "h2".into(),
-                            "http/1.1".into(),
-                        ]);
+
+                    match config.http_version {
+                        HttpVersion::Http11 => {
+
+                        }
+                        HttpVersion::H2 => {
+                            tls.set_protocols(&["h2".into()]);
+                        }
+                        HttpVersion::DualAlpn => {
+                            tls.set_protocols(&[
+                                "h2".into(),
+                                "http/1.1".into(),
+                            ]);
+                        }
                     }
+
                     tls.root_store.add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
 
                     if !config.certs_verification {
@@ -175,7 +184,7 @@ impl ClientBuilder {
         };
 
         let mut builder = ::hyper::Client::builder();
-        if config.http2_only {
+        if config.http_version == HttpVersion::H2 {
             builder.http2_only(true);
         }
         let hyper_client = builder.build(connector);
@@ -314,9 +323,9 @@ impl ClientBuilder {
         self
     }
 
-    /// Only use HTTP/2.
-    pub fn h2_prior_knowledge(mut self) -> ClientBuilder {
-        self.config.http2_only = true;
+    /// http version consult
+    pub fn http_version(mut self, http_version: HttpVersion) -> ClientBuilder {
+        self.config.http_version = http_version;
         self
     }
 
