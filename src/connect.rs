@@ -98,7 +98,7 @@ impl Connector {
         })
     }
 
-    #[cfg(feature = "rustls-tls")]
+    #[cfg(all(feature = "rustls-tls", any(feature = "gai-resolver", feature = "trust-dns")))]
     pub(crate) fn new_rustls_tls<T>(
         tls: rustls::ClientConfig,
         proxies: Arc<Vec<Proxy>>,
@@ -109,6 +109,39 @@ impl Connector {
             T: Into<Option<IpAddr>>,
     {
         let mut http = http_connector()?;
+        http.set_local_address(local_addr.into());
+        http.enforce_http(false);
+
+        let (tls, tls_proxy) = if proxies.is_empty() {
+            let tls = Arc::new(tls);
+            (tls.clone(), tls)
+        } else {
+            let mut tls_proxy = tls.clone();
+            tls_proxy.alpn_protocols.clear();
+            (Arc::new(tls), Arc::new(tls_proxy))
+        };
+
+        Ok(Connector {
+            inner: Inner::RustlsTls { http, tls, tls_proxy },
+            proxies,
+            timeout: None,
+            nodelay,
+            user_agent,
+        })
+    }
+
+    #[cfg(all(feature = "rustls-tls", not(feature = "gai-resolver"), not(feature = "trust-dns")))]
+    pub(crate) fn new_rustls_tls<T>(
+        tls: rustls::ClientConfig,
+        proxies: Arc<Vec<Proxy>>,
+        user_agent: HeaderValue,
+        local_addr: T,
+        nodelay: bool,
+        threads: usize) -> ::Result<Connector>
+        where
+            T: Into<Option<IpAddr>>,
+    {
+        let mut http = http_connector(threads)?;
         http.set_local_address(local_addr.into());
         http.enforce_http(false);
 
@@ -206,6 +239,7 @@ impl Connector {
         // else no TLS
         socks::connect(proxy, dst, dns)
     }
+
 }
 
 #[cfg(feature = "trust-dns")]
@@ -221,8 +255,8 @@ fn http_connector() -> ::Result<HttpConnector> {
 }
 
 #[cfg(not(any(feature = "trust-dns", feature = "gai-resolver")))]
-fn http_connector() -> ::Result<HttpConnector> {
-    Ok(HttpConnector::new(4))
+fn http_connector(dns_threads: usize) -> ::Result<HttpConnector> {
+    Ok(HttpConnector::new(dns_threads))
 }
 
 impl Connect for Connector {

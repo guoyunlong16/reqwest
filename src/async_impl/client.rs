@@ -89,6 +89,8 @@ struct Config {
     cookie_store: Option<cookie::CookieStore>,
     http_builder: hyper::client::Builder,
     http_version: HttpVersion,
+    #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
+    dns_threads: usize,
 }
 
 impl ClientBuilder {
@@ -125,6 +127,8 @@ impl ClientBuilder {
                 cookie_store: None,
                 http_builder: hyper::Client::builder(),
                 http_version: HttpVersion::Http11,
+                #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
+                dns_threads: 4,
             },
         }
     }
@@ -206,7 +210,16 @@ impl ClientBuilder {
                         id.add_to_rustls(&mut tls)?;
                     }
 
-                    Connector::new_rustls_tls(tls, proxies.clone(), user_agent(&config.headers), config.local_address, config.nodelay)?
+                    #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
+                    {
+                        let threads = config.dns_threads;
+                        Connector::new_rustls_tls(tls, proxies.clone(), user_agent(&config.headers), config.local_address, config.nodelay, threads)?
+                    }
+                    #[cfg(any(feature = "gai-resolver", feature = "trust-dns"))]
+                    {
+                        Connector::new_rustls_tls(tls, proxies.clone(), user_agent(&config.headers), config.local_address, config.nodelay)?
+                    }
+
                 }
             }
 
@@ -443,8 +456,9 @@ impl ClientBuilder {
     }
 
     #[doc(hidden)]
-    #[deprecated(note = "DNS no longer uses blocking threads")]
-    pub fn dns_threads(self, _threads: usize) -> ClientBuilder {
+    #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
+    pub fn dns_threads(mut self, threads: usize) -> ClientBuilder {
+        self.config.dns_threads = threads;
         self
     }
 
