@@ -77,6 +77,8 @@ struct Config {
     #[cfg(feature = "tls")]
     tls: TlsBackend,
     http_version: HttpVersion,
+    #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
+    dns_threads: usize,
 }
 
 impl ClientBuilder {
@@ -107,6 +109,8 @@ impl ClientBuilder {
                 #[cfg(feature = "tls")]
                 tls: TlsBackend::default(),
                 http_version: HttpVersion::Http11,
+                #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
+                dns_threads: 4,
             },
         }
     }
@@ -175,7 +179,16 @@ impl ClientBuilder {
                         id.add_to_rustls(&mut tls)?;
                     }
 
-                    Connector::new_rustls_tls(tls, proxies.clone())?
+                    #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
+                    {
+                        let threads = config.dns_threads;
+                        Connector::new_rustls_tls(tls, proxies.clone(), threads)?
+                    }
+                    #[cfg(any(feature = "gai-resolver", feature = "trust-dns"))]
+                    {
+                        Connector::new_rustls_tls(tls, proxies.clone())?
+                    }
+
                 }
             }
 
@@ -330,8 +343,9 @@ impl ClientBuilder {
     }
 
     #[doc(hidden)]
-    #[deprecated(note = "DNS no longer uses blocking threads")]
-    pub fn dns_threads(self, _threads: usize) -> ClientBuilder {
+    #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
+    pub fn dns_threads(mut self, threads: usize) -> ClientBuilder {
+        self.config.dns_threads = threads;
         self
     }
 }

@@ -65,9 +65,21 @@ impl Connector {
         })
     }
 
-    #[cfg(feature = "rustls-tls")]
+    #[cfg(all(feature = "rustls-tls", any(feature = "gai-resolver", feature = "trust-dns")))]
     pub(crate) fn new_rustls_tls(tls: rustls::ClientConfig, proxies: Arc<Vec<Proxy>>) -> ::Result<Connector> {
         let mut http = http_connector()?;
+        http.enforce_http(false);
+        let http = ::hyper_rustls::HttpsConnector::from((http, tls.clone()));
+
+        Ok(Connector {
+            proxies,
+            inner: Inner::RustlsTls(http, Arc::new(tls))
+        })
+    }
+
+    #[cfg(all(feature = "rustls-tls", not(feature = "gai-resolver"), not(feature = "trust-dns")))]
+    pub(crate) fn new_rustls_tls(tls: rustls::ClientConfig, proxies: Arc<Vec<Proxy>>, threads: usize) -> ::Result<Connector> {
+        let mut http = http_connector(threads)?;
         http.enforce_http(false);
         let http = ::hyper_rustls::HttpsConnector::from((http, tls.clone()));
 
@@ -91,8 +103,8 @@ fn http_connector() -> ::Result<HttpConnector> {
 }
 
 #[cfg(not(any(feature = "trust-dns", feature = "gai-resolver")))]
-fn http_connector() -> ::Result<HttpConnector> {
-    Ok(HttpConnector::new(4))
+fn http_connector(dns_threads: usize) -> ::Result<HttpConnector> {
+    Ok(HttpConnector::new(dns_threads))
 }
 
 impl Connect for Connector {
