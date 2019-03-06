@@ -1,5 +1,4 @@
 #!/bin/bash
-set -e
 
 cargo build
 
@@ -12,3 +11,11 @@ cargo update -p http --precise 0.1.14
 cargo build
 
 cargo test
+
+# run examples
+for example in `ls examples`
+do
+    len=${#example}
+    example=${example:0:$len-3}
+    cargo run --example $example > /dev/null
+done

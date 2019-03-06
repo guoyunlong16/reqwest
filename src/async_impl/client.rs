@@ -165,7 +165,15 @@ impl ClientBuilder {
                         id.add_to_native_tls(&mut tls)?;
                     }
 
-                    Connector::new_default_tls(tls, proxies.clone(), user_agent(&config.headers), config.local_address, config.nodelay)?
+                    #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
+                    {
+                        let threads = config.dns_threads;
+                        Connector::new_default_tls(tls, proxies.clone(), user_agent(&config.headers), config.local_address, config.nodelay, threads)?
+                    }
+                    #[cfg(any(feature = "gai-resolver", feature = "trust-dns"))]
+                    {
+                        Connector::new_default_tls(tls, proxies.clone(), user_agent(&config.headers), config.local_address, config.nodelay)?
+                    }
                 },
                 #[cfg(feature = "rustls-tls")]
                 TlsBackend::Rustls => {

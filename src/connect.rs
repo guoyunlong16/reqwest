@@ -73,7 +73,7 @@ impl Connector {
         })
     }
 
-    #[cfg(feature = "default-tls")]
+    #[cfg(all(feature = "default-tls", any(feature = "gai-resolver", feature = "trust-dns")))]
     pub(crate) fn new_default_tls<T>(
         tls: TlsConnectorBuilder,
         proxies: Arc<Vec<Proxy>>,
@@ -86,6 +86,32 @@ impl Connector {
         let tls = try_!(tls.build());
 
         let mut http = http_connector()?;
+        http.set_local_address(local_addr.into());
+        http.enforce_http(false);
+
+        Ok(Connector {
+            inner: Inner::DefaultTls(http, tls),
+            proxies,
+            timeout: None,
+            nodelay,
+            user_agent,
+        })
+    }
+
+    #[cfg(all(feature = "default-tls", not(feature = "gai-resolver"), not(feature = "trust-dns")))]
+    pub(crate) fn new_default_tls<T>(
+        tls: TlsConnectorBuilder,
+        proxies: Arc<Vec<Proxy>>,
+        user_agent: HeaderValue,
+        local_addr: T,
+        nodelay: bool,
+        threads: usize) -> ::Result<Connector> 
+        where
+            T: Into<Option<IpAddr>>,
+    {
+        let tls = try_!(tls.build());
+
+        let mut http = http_connector(threads)?;
         http.set_local_address(local_addr.into());
         http.enforce_http(false);
 

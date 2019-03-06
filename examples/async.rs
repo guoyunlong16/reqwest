@@ -13,11 +13,12 @@ fn fetch() -> impl Future<Item=(), Error=()> {
     let client = client_builder
         .danger_accept_invalid_certs(true)
         .http_version(reqwest::HttpVersion::Http11)
+        .use_rustls_tls()
         .build()
         .unwrap();
     client
     // .get("https://duckduckgo.com")
-        .get("https://54.254.135.186")
+        .get("https://bugs.swift.org")
         .send()
         .and_then(|mut res| {
             println!("{}", res.status());
