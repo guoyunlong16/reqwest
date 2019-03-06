@@ -46,7 +46,7 @@ serde_derive = "1.0"
 tokio-tcp = "0.1"
 
 [features]
-default = ["rustls-tls"]
+default = ["default-tls", "rustls-tls"]
 
 tls = []
 

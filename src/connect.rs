@@ -51,11 +51,25 @@ impl Connector {
         })
     }
 
-    #[cfg(feature = "default-tls")]
+    #[cfg(all(feature = "default-tls", any(feature = "gai-resolver", feature = "trust-dns")))]
     pub(crate) fn new_default_tls(tls: TlsConnectorBuilder, proxies: Arc<Vec<Proxy>>) -> ::Result<Connector> {
         let tls = try_!(tls.build());
 
         let mut http = http_connector()?;
+        http.enforce_http(false);
+        let http = ::hyper_tls::HttpsConnector::from((http, tls.clone()));
+
+        Ok(Connector {
+            proxies,
+            inner: Inner::DefaultTls(http, tls)
+        })
+    }
+
+    #[cfg(all(feature = "default-tls", not(feature = "gai-resolver"), not(feature = "trust-dns")))]
+    pub(crate) fn new_default_tls(tls: TlsConnectorBuilder, proxies: Arc<Vec<Proxy>>, threads: usize) -> ::Result<Connector> {
+        let tls = try_!(tls.build());
+
+        let mut http = http_connector(threads)?;
         http.enforce_http(false);
         let http = ::hyper_tls::HttpsConnector::from((http, tls.clone()));
 
