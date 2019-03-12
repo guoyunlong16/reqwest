@@ -6,6 +6,7 @@ use std::net::IpAddr;
 use bytes::Bytes;
 use futures::{Async, Future, Poll};
 use futures::future::Executor;
+use futures_cpupool::{self, CpuPool};
 use header::{
     Entry,
     HeaderMap,
@@ -90,7 +91,7 @@ struct Config {
     http_builder: hyper::client::Builder,
     http_version: HttpVersion,
     #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
-    dns_threads: usize,
+    dns_resolve_pool: CpuPool,
 }
 
 impl ClientBuilder {
@@ -98,6 +99,51 @@ impl ClientBuilder {
     ///
     /// This is the same as `Client::builder()`.
     pub fn new() -> ClientBuilder {
+        let mut headers: HeaderMap<HeaderValue> = HeaderMap::with_capacity(2);
+        headers.insert(USER_AGENT, HeaderValue::from_static(DEFAULT_USER_AGENT));
+        headers.insert(ACCEPT, HeaderValue::from_str(mime::STAR_STAR.as_ref()).expect("unable to parse mime"));
+
+        #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
+        let cpu_pool: CpuPool = futures_cpupool::Builder::new()
+            .pool_size(4)
+            .name_prefix("t:dns-")
+            .create();
+        ClientBuilder {
+            config: Config {
+                gzip: true,
+                headers: headers,
+                #[cfg(feature = "default-tls")]
+                hostname_verification: true,
+                #[cfg(feature = "tls")]
+                certs_verification: true,
+                connect_timeout: None,
+                proxies: Vec::new(),
+                redirect_policy: RedirectPolicy::default(),
+                referer: true,
+                timeout: None,
+                #[cfg(feature = "tls")]
+                root_certs: Vec::new(),
+                #[cfg(feature = "tls")]
+                identity: None,
+                #[cfg(feature = "tls")]
+                tls: TlsBackend::default(),
+                http2_only: false,
+                local_address: None,
+                nodelay: false,
+                cookie_store: None,
+                http_builder: hyper::Client::builder(),
+                http_version: HttpVersion::Http11,
+                #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
+                dns_resolve_pool: cpu_pool,
+            },
+        }
+    }
+
+    /// Constructs a new `ClientBuilder`.
+    ///
+    /// This is the same as `Client::builder()`.
+    #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
+    pub fn new_with_cpupool(pool: CpuPool) -> ClientBuilder {
         let mut headers: HeaderMap<HeaderValue> = HeaderMap::with_capacity(2);
         headers.insert(USER_AGENT, HeaderValue::from_static(DEFAULT_USER_AGENT));
         headers.insert(ACCEPT, HeaderValue::from_str(mime::STAR_STAR.as_ref()).expect("unable to parse mime"));
@@ -127,8 +173,7 @@ impl ClientBuilder {
                 cookie_store: None,
                 http_builder: hyper::Client::builder(),
                 http_version: HttpVersion::Http11,
-                #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
-                dns_threads: 4,
+                dns_resolve_pool: pool,
             },
         }
     }
@@ -167,8 +212,8 @@ impl ClientBuilder {
 
                     #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
                     {
-                        let threads = config.dns_threads;
-                        Connector::new_default_tls(tls, proxies.clone(), user_agent(&config.headers), config.local_address, config.nodelay, threads)?
+                        let pool = config.dns_resolve_pool.clone();
+                        Connector::new_default_tls(tls, proxies.clone(), user_agent(&config.headers), config.local_address, config.nodelay, pool)?
                     }
                     #[cfg(any(feature = "gai-resolver", feature = "trust-dns"))]
                     {
@@ -220,8 +265,8 @@ impl ClientBuilder {
 
                     #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
                     {
-                        let threads = config.dns_threads;
-                        Connector::new_rustls_tls(tls, proxies.clone(), user_agent(&config.headers), config.local_address, config.nodelay, threads)?
+                        let pool = config.dns_resolve_pool.clone();
+                        Connector::new_rustls_tls(tls, proxies.clone(), user_agent(&config.headers), config.local_address, config.nodelay, pool)?
                     }
                     #[cfg(any(feature = "gai-resolver", feature = "trust-dns"))]
                     {
@@ -463,13 +508,6 @@ impl ClientBuilder {
         self
     }
 
-    #[doc(hidden)]
-    #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
-    pub fn dns_threads(mut self, threads: usize) -> ClientBuilder {
-        self.config.dns_threads = threads;
-        self
-    }
-
     /// Bind to a local IP Address
     pub fn local_address<T>(mut self, addr: T) -> ClientBuilder
     where
@@ -513,11 +551,35 @@ impl Client {
             .expect("Client::new()")
     }
 
+    /// Constructs a new `Client`.
+    ///
+    /// # Panics
+    ///
+    /// This method panics if TLS backend cannot initialized, or the resolver
+    /// cannot load the system configuration.
+    ///
+    /// Use `Client::builder()` if you wish to handle the failure as an `Error`
+    /// instead of panicking.
+    #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
+    pub fn new_with_cpupool(pool: CpuPool) -> Client {
+        ClientBuilder::new_with_cpupool(pool)
+            .build()
+            .expect("Client::new(pool: CpuPool)")
+    }
+
     /// Creates a `ClientBuilder` to configure a `Client`.
     ///
     /// This is the same as `ClientBuilder::new()`.
     pub fn builder() -> ClientBuilder {
         ClientBuilder::new()
+    }
+
+    /// Creates a `ClientBuilder` to configure a `Client`.
+    ///
+    /// This is the same as `ClientBuilder::new(pool: CpuPool)`.
+    #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
+    pub fn builder_with_cpupool(pool: CpuPool) -> ClientBuilder {
+        ClientBuilder::new_with_cpupool(pool)
     }
 
     /// Convenience method to make a `GET` request to a URL.

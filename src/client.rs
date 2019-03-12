@@ -7,6 +7,7 @@ use std::net::IpAddr;
 use futures::{Async, Future, Stream};
 use futures::future::{self, Either};
 use futures::sync::{mpsc, oneshot};
+use futures_cpupool::CpuPool;
 
 use request::{Request, RequestBuilder};
 use response::Response;
@@ -68,6 +69,17 @@ impl ClientBuilder {
     pub fn new() -> ClientBuilder {
         ClientBuilder {
             inner: async_impl::ClientBuilder::new(),
+            timeout: Timeout::default(),
+        }
+    }
+
+    /// Constructs a new `ClientBuilder`.
+    ///
+    /// This is the same as `Client::builder()`.
+    #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
+    pub fn new_with_cpupool(pool: CpuPool) -> ClientBuilder {
+        ClientBuilder {
+            inner: async_impl::ClientBuilder::new_with_cpupool(pool),
             timeout: Timeout::default(),
         }
     }
@@ -419,11 +431,36 @@ impl Client {
             .expect("Client::new()")
     }
 
+
+    /// Constructs a new `Client`.
+    ///
+    /// # Panic
+    ///
+    /// This method panics if TLS backend cannot initialized, or the resolver
+    /// cannot load the system configuration.
+    ///
+    /// Use `Client::builder()` if you wish to handle the failure as an `Error`
+    /// instead of panicking.
+    #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
+    pub fn new_with_cpupool(pool: CpuPool) -> Client {
+        ClientBuilder::new_with_cpupool(pool)
+            .build()
+            .expect("Client::new(pool: CpuPool)")
+    }
+
     /// Creates a `ClientBuilder` to configure a `Client`.
     ///
     /// This is the same as `ClientBuilder::new()`.
     pub fn builder() -> ClientBuilder {
         ClientBuilder::new()
+    }
+
+    /// Creates a `ClientBuilder` to configure a `Client`.
+    ///
+    /// This is the same as `ClientBuilder::new(pool: CpuPool)`.
+    #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
+    pub fn builder_with_cpupool(pool: CpuPool) -> ClientBuilder {
+        ClientBuilder::new_with_cpupool(pool)
     }
 
     /// Convenience method to make a `GET` request to a URL.

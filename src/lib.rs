@@ -180,6 +180,7 @@ extern crate cookie_store;
 extern crate encoding_rs;
 #[macro_use]
 extern crate futures;
+extern crate futures_cpupool;
 extern crate http;
 extern crate hyper;
 #[cfg(feature = "hyper-011")]
@@ -231,6 +232,7 @@ pub use hyper::Method;
 pub use hyper::{StatusCode, Version};
 pub use url::Url;
 pub use url::ParseError as UrlError;
+use futures_cpupool::CpuPool;
 
 pub use self::client::{Client, ClientBuilder};
 pub use self::error::{Error, Result};
@@ -325,6 +327,43 @@ pub enum HttpVersion {
 /// - redirect limit was exhausted
 pub fn get<T: IntoUrl>(url: T) -> ::Result<Response> {
     Client::builder()
+        .build()?
+        .get(url)
+        .send()
+}
+
+/// Shortcut method to quickly make a `GET` request.
+///
+/// See also the methods on the [`reqwest::Response`](./struct.Response.html)
+/// type.
+///
+/// **NOTE**: This function creates a new internal `Client` on each call,
+/// and so should not be used if making many requests. Create a
+/// [`Client`](./struct.Client.html) instead.
+///
+/// # Examples
+///
+/// ```rust
+/// # fn run() -> Result<(), reqwest::Error> {
+/// let body = reqwest::get("https://www.rust-lang.org")?
+///     .text()?;
+/// # Ok(())
+/// # }
+/// # fn main() { }
+/// ```
+///
+/// # Errors
+///
+/// This function fails if:
+///
+/// - native TLS backend cannot be initialized
+/// - supplied `Url` cannot be parsed
+/// - there was an error while sending request
+/// - redirect loop was detected
+/// - redirect limit was exhausted
+#[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
+pub fn get_with_cpupool<T: IntoUrl>(url: T, pool: CpuPool) -> ::Result<Response> {
+    Client::builder_with_cpupool(pool)
         .build()?
         .get(url)
         .send()

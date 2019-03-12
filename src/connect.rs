@@ -1,4 +1,5 @@
 use futures::Future;
+use futures_cpupool::CpuPool;
 use http::uri::Scheme;
 use hyper::client::connect::{Connect, Connected, Destination};
 #[cfg(feature = "gai-resolver")]
@@ -105,13 +106,13 @@ impl Connector {
         user_agent: HeaderValue,
         local_addr: T,
         nodelay: bool,
-        threads: usize) -> ::Result<Connector> 
+        pool: CpuPool) -> ::Result<Connector> 
         where
             T: Into<Option<IpAddr>>,
     {
         let tls = try_!(tls.build());
 
-        let mut http = http_connector(threads)?;
+        let mut http = http_connector(pool)?;
         http.set_local_address(local_addr.into());
         http.enforce_http(false);
 
@@ -163,11 +164,11 @@ impl Connector {
         user_agent: HeaderValue,
         local_addr: T,
         nodelay: bool,
-        threads: usize) -> ::Result<Connector>
+        pool: CpuPool) -> ::Result<Connector> 
         where
             T: Into<Option<IpAddr>>,
     {
-        let mut http = http_connector(threads)?;
+        let mut http = http_connector(pool)?;
         http.set_local_address(local_addr.into());
         http.enforce_http(false);
 
@@ -281,8 +282,8 @@ fn http_connector() -> ::Result<HttpConnector> {
 }
 
 #[cfg(not(any(feature = "trust-dns", feature = "gai-resolver")))]
-fn http_connector(dns_threads: usize) -> ::Result<HttpConnector> {
-    Ok(HttpConnector::new(dns_threads))
+fn http_connector(pool: CpuPool) -> ::Result<HttpConnector> {
+    Ok(HttpConnector::new_with_executor(pool, None))
 }
 
 impl Connect for Connector {

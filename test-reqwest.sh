@@ -1,5 +1,8 @@
 #!/bin/bash
 
+rm -rf target
+rm Cargo.lock
+
 cargo build
 
 # update custom denpendency
