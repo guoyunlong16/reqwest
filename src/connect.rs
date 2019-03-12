@@ -1,4 +1,5 @@
 use futures::Future;
+use futures_cpupool::CpuPool;
 use http::uri::Scheme;
 use hyper::client::connect::{Connect, Connected, Destination};
 #[cfg(feature = "gai-resolver")]
@@ -66,10 +67,10 @@ impl Connector {
     }
 
     #[cfg(all(feature = "default-tls", not(feature = "gai-resolver"), not(feature = "trust-dns")))]
-    pub(crate) fn new_default_tls(tls: TlsConnectorBuilder, proxies: Arc<Vec<Proxy>>, threads: usize) -> ::Result<Connector> {
+    pub(crate) fn new_default_tls(tls: TlsConnectorBuilder, proxies: Arc<Vec<Proxy>>, pool: CpuPool) -> ::Result<Connector> {
         let tls = try_!(tls.build());
 
-        let mut http = http_connector(threads)?;
+        let mut http = http_connector(pool)?;
         http.enforce_http(false);
         let http = ::hyper_tls::HttpsConnector::from((http, tls.clone()));
 
@@ -92,8 +93,8 @@ impl Connector {
     }
 
     #[cfg(all(feature = "rustls-tls", not(feature = "gai-resolver"), not(feature = "trust-dns")))]
-    pub(crate) fn new_rustls_tls(tls: rustls::ClientConfig, proxies: Arc<Vec<Proxy>>, threads: usize) -> ::Result<Connector> {
-        let mut http = http_connector(threads)?;
+    pub(crate) fn new_rustls_tls(tls: rustls::ClientConfig, proxies: Arc<Vec<Proxy>>, pool: CpuPool) -> ::Result<Connector> {
+        let mut http = http_connector(pool)?;
         http.enforce_http(false);
         let http = ::hyper_rustls::HttpsConnector::from((http, tls.clone()));
 
@@ -117,8 +118,8 @@ fn http_connector() -> ::Result<HttpConnector> {
 }
 
 #[cfg(not(any(feature = "trust-dns", feature = "gai-resolver")))]
-fn http_connector(dns_threads: usize) -> ::Result<HttpConnector> {
-    Ok(HttpConnector::new(dns_threads))
+fn http_connector(pool: CpuPool) -> ::Result<HttpConnector> {
+    Ok(HttpConnector::new_with_executor(pool, None))
 }
 
 impl Connect for Connector {

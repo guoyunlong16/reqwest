@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use futures::{Async, Future, Poll};
+use futures_cpupool::CpuPool;
 use header::{
     HeaderMap,
     HeaderValue,
@@ -78,13 +79,14 @@ struct Config {
     tls: TlsBackend,
     http_version: HttpVersion,
     #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
-    dns_threads: usize,
+    dns_resolve_pool: CpuPool,
 }
 
 impl ClientBuilder {
     /// Constructs a new `ClientBuilder`.
     ///
     /// This is the same as `Client::builder()`.
+    #[cfg(any(feature = "gai-resolver", feature = "trust-dns"))]
     pub fn new() -> ClientBuilder {
         let mut headers: HeaderMap<HeaderValue> = HeaderMap::with_capacity(2);
         headers.insert(USER_AGENT, HeaderValue::from_static(DEFAULT_USER_AGENT));
@@ -109,8 +111,39 @@ impl ClientBuilder {
                 #[cfg(feature = "tls")]
                 tls: TlsBackend::default(),
                 http_version: HttpVersion::Http11,
-                #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
-                dns_threads: 4,
+            },
+        }
+    }
+
+    /// Constructs a new `ClientBuilder`.
+    ///
+    /// This is the same as `Client::builder()`.
+    #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
+    pub fn new(pool: CpuPool) -> ClientBuilder {
+        let mut headers: HeaderMap<HeaderValue> = HeaderMap::with_capacity(2);
+        headers.insert(USER_AGENT, HeaderValue::from_static(DEFAULT_USER_AGENT));
+        headers.insert(ACCEPT, HeaderValue::from_str(mime::STAR_STAR.as_ref()).expect("unable to parse mime"));
+
+        ClientBuilder {
+            config: Config {
+                gzip: true,
+                headers: headers,
+                #[cfg(feature = "default-tls")]
+                hostname_verification: true,
+                #[cfg(feature = "tls")]
+                certs_verification: true,
+                proxies: Vec::new(),
+                redirect_policy: RedirectPolicy::default(),
+                referer: true,
+                timeout: None,
+                #[cfg(feature = "tls")]
+                root_certs: Vec::new(),
+                #[cfg(feature = "tls")]
+                identity: None,
+                #[cfg(feature = "tls")]
+                tls: TlsBackend::default(),
+                http_version: HttpVersion::Http11,
+                dns_resolve_pool: pool,
             },
         }
     }
@@ -144,8 +177,8 @@ impl ClientBuilder {
 
                     #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
                     {
-                        let threads = config.dns_threads;
-                        Connector::new_default_tls(tls, proxies.clone(), threads)?
+                        let pool = config.dns_resolve_pool.clone();
+                        Connector::new_default_tls(tls, proxies.clone(), pool)?
                     }
                     #[cfg(any(feature = "gai-resolver", feature = "trust-dns"))]
                     {
@@ -189,8 +222,8 @@ impl ClientBuilder {
 
                     #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
                     {
-                        let threads = config.dns_threads;
-                        Connector::new_rustls_tls(tls, proxies.clone(), threads)?
+                        let pool = config.dns_resolve_pool.clone();
+                        Connector::new_rustls_tls(tls, proxies.clone(), pool)?
                     }
                     #[cfg(any(feature = "gai-resolver", feature = "trust-dns"))]
                     {
@@ -349,13 +382,6 @@ impl ClientBuilder {
         self.config.http_version = http_version;
         self
     }
-
-    #[doc(hidden)]
-    #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
-    pub fn dns_threads(mut self, threads: usize) -> ClientBuilder {
-        self.config.dns_threads = threads;
-        self
-    }
 }
 
 type HyperClient = ::hyper::Client<Connector>;
@@ -370,8 +396,25 @@ impl Client {
     ///
     /// Use `Client::builder()` if you wish to handle the failure as an `Error`
     /// instead of panicking.
+    #[cfg(any(feature = "gai-resolver", feature = "trust-dns"))]
     pub fn new() -> Client {
         ClientBuilder::new()
+            .build()
+            .expect("Client::new()")
+    }
+
+    /// Constructs a new `Client`.
+    ///
+    /// # Panics
+    ///
+    /// This method panics if TLS backend cannot initialized, or the resolver
+    /// cannot load the system configuration.
+    ///
+    /// Use `Client::builder()` if you wish to handle the failure as an `Error`
+    /// instead of panicking.
+    #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
+    pub fn new(pool: CpuPool) -> Client {
+        ClientBuilder::new(pool)
             .build()
             .expect("Client::new()")
     }
@@ -379,8 +422,17 @@ impl Client {
     /// Creates a `ClientBuilder` to configure a `Client`.
     ///
     /// This is the same as `ClientBuilder::new()`.
+    #[cfg(any(feature = "gai-resolver", feature = "trust-dns"))]
     pub fn builder() -> ClientBuilder {
         ClientBuilder::new()
+    }
+
+    /// Creates a `ClientBuilder` to configure a `Client`.
+    ///
+    /// This is the same as `ClientBuilder::new()`.
+    #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
+    pub fn builder(pool: CpuPool) -> ClientBuilder {
+        ClientBuilder::new(pool)
     }
 
     /// Convenience method to make a `GET` request to a URL.

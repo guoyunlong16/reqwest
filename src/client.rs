@@ -6,6 +6,7 @@ use std::thread;
 use futures::{Async, Future, Stream};
 use futures::future::{self, Either};
 use futures::sync::{mpsc, oneshot};
+use futures_cpupool::CpuPool;
 
 use request::{Request, RequestBuilder};
 use response::Response;
@@ -64,9 +65,21 @@ impl ClientBuilder {
     /// Constructs a new `ClientBuilder`.
     ///
     /// This is the same as `Client::builder()`.
+    #[cfg(any(feature = "gai-resolver", feature = "trust-dns"))]
     pub fn new() -> ClientBuilder {
         ClientBuilder {
             inner: async_impl::ClientBuilder::new(),
+            timeout: Timeout::default(),
+        }
+    }
+
+    /// Constructs a new `ClientBuilder`.
+    ///
+    /// This is the same as `Client::builder()`.
+    #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
+    pub fn new(pool: CpuPool) -> ClientBuilder {
+        ClientBuilder {
+            inner: async_impl::ClientBuilder::new(pool),
             timeout: Timeout::default(),
         }
     }
@@ -319,8 +332,26 @@ impl Client {
     ///
     /// Use `Client::builder()` if you wish to handle the failure as an `Error`
     /// instead of panicking.
+    #[cfg(any(feature = "gai-resolver", feature = "trust-dns"))]
     pub fn new() -> Client {
         ClientBuilder::new()
+            .build()
+            .expect("Client::new()")
+    }
+
+
+    /// Constructs a new `Client`.
+    ///
+    /// # Panic
+    ///
+    /// This method panics if TLS backend cannot initialized, or the resolver
+    /// cannot load the system configuration.
+    ///
+    /// Use `Client::builder()` if you wish to handle the failure as an `Error`
+    /// instead of panicking.
+    #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
+    pub fn new(pool: CpuPool) -> Client {
+        ClientBuilder::new(pool)
             .build()
             .expect("Client::new()")
     }
@@ -328,8 +359,17 @@ impl Client {
     /// Creates a `ClientBuilder` to configure a `Client`.
     ///
     /// This is the same as `ClientBuilder::new()`.
+    #[cfg(any(feature = "gai-resolver", feature = "trust-dns"))]
     pub fn builder() -> ClientBuilder {
         ClientBuilder::new()
+    }
+
+    /// Creates a `ClientBuilder` to configure a `Client`.
+    ///
+    /// This is the same as `ClientBuilder::new()`.
+    #[cfg(not(all(feature = "gai-resolver", feature = "trust-dns")))]
+    pub fn builder(pool: CpuPool) -> ClientBuilder {
+        ClientBuilder::new(pool)
     }
 
     /// Convenience method to make a `GET` request to a URL.
