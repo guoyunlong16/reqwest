@@ -200,40 +200,53 @@ impl Stream for Gzip {
     type Error = error::Error;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-        if self.buf.remaining_mut() == 0 {
-            self.buf.reserve(INIT_BUFFER_SIZE);
+        const BUFFER_SIZE:usize = INIT_BUFFER_SIZE*4;
+
+        if self.buf.remaining_mut() < BUFFER_SIZE {
+            self.buf.reserve(BUFFER_SIZE);
         }
 
-        // The buffer contains uninitialised memory so getting a readable slice is unsafe.
-        // We trust the `flate2` and `miniz` writer not to read from the memory given.
-        //
-        // To be safe, this memory could be zeroed before passing to `flate2`.
-        // Otherwise we might need to deal with the case where `flate2` panics.
-        let read = try_io!(self.inner.read(unsafe { self.buf.bytes_mut() }));
-
-        if read == 0 {
-            // If GzDecoder reports EOF, it doesn't necessarily mean the
-            // underlying stream reached EOF (such as the `0\r\n\r\n`
-            // header meaning a chunked transfer has completed). If it
-            // isn't polled till EOF, the connection may not be able
-            // to be re-used.
+        loop {
+            // The buffer contains uninitialised memory so getting a readable slice is unsafe.
+            // We trust the `flate2` and `miniz` writer not to read from the memory given.
             //
-            // See https://github.com/seanmonstar/reqwest/issues/508.
-            let inner_read = try_io!(self.inner.get_mut().read(&mut [0]));
-            if inner_read == 0 {
-                Ok(Async::Ready(None))
-            } else {
-                Err(error::from(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "unexpected data after gzip decoder signaled end-of-file",
-                )))
-            }
-        } else {
-            unsafe { self.buf.advance_mut(read) };
-            let chunk = Chunk::from_chunk(self.buf.split_to(read).freeze());
+            // To be safe, this memory could be zeroed before passing to `flate2`.
+            // Otherwise we might need to deal with the case where `flate2` panics.
+            let read = try_io!(self.inner.read(unsafe { self.buf.bytes_mut() }));
 
-            Ok(Async::Ready(Some(chunk)))
+            if read == 0 {
+                // If GzDecoder reports EOF, it doesn't necessarily mean the
+                // underlying stream reached EOF (such as the `0\r\n\r\n`
+                // header meaning a chunked transfer has completed). If it
+                // isn't polled till EOF, the connection may not be able
+                // to be re-used.
+                //
+                // See https://github.com/seanmonstar/reqwest/issues/508.
+                let inner_read = try_io!(self.inner.get_mut().read(&mut [0]));
+                if inner_read == 0 {
+                    if self.buf.len() > 0 {
+                        break;
+                    } else {
+                        return Ok(Async::Ready(None));
+                    }
+                } else {
+                    return Err(error::from(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "unexpected data after gzip decoder signaled end-of-file",
+                    )))
+                }
+            } else {
+                unsafe { self.buf.advance_mut(read) };
+
+                if self.buf.remaining_mut() == 0 {
+                    break;
+                }
+            }
         }
+        let read_size = self.buf.len();
+        let chunk = Chunk::from_chunk(self.buf.split_to(read_size).freeze());
+
+        Ok(Async::Ready(Some(chunk)))
     }
 }
 
