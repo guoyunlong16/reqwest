@@ -212,35 +212,54 @@ impl Stream for Gzip {
     type Error = error::Error;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-        if self.buf.remaining_mut() == 0 {
-            self.buf.reserve(INIT_BUFFER_SIZE);
+        const BUFFER_SIZE:usize = INIT_BUFFER_SIZE*4;
+
+        if self.buf.remaining_mut() < BUFFER_SIZE {
+            self.buf.reserve(BUFFER_SIZE);
         }
 
-        // The buffer contains uninitialised memory so getting a readable slice is unsafe.
-        // We trust the `libflate` writer not to read from the memory given.
-        // 
-        // To be safe, this memory could be zeroed before passing to `libflate`.
-        // Otherwise we might need to deal with the case where `libflate` panics.
-        let read = {
-            let mut buf = unsafe { self.buf.bytes_mut() };
-            self.inner.read(&mut buf)
-        };
+        loop {
+            // The buffer contains uninitialised memory so getting a readable slice is unsafe.
+            // We trust the `libflate` writer not to read from the memory given.
+            //
+            // To be safe, this memory could be zeroed before passing to `libflate`.
+            // Otherwise we might need to deal with the case where `libflate` panics.
+            let read = {
+                let mut buf = unsafe { self.buf.bytes_mut() };
+                self.inner.read(&mut buf)
+            };
 
-        match read {
-            Ok(read) if read == 0 => {
-                Ok(Async::Ready(None))
-            },
-            Ok(read) => {
-                unsafe { self.buf.advance_mut(read) };
-                let chunk = Chunk::from_chunk(self.buf.split_to(read).freeze());
+            match read {
+                Ok(read) if read == 0 => {
+                    if self.buf.len() > 0 {
+                        break;
+                    } else {
+                        return Ok(Async::Ready(None));
+                    }
+                },
+                Ok(read) => {
+                    unsafe { self.buf.advance_mut(read) };
 
-                Ok(Async::Ready(Some(chunk)))
-            },
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                Ok(Async::NotReady)
-            },
-            Err(e) => Err(error::from(e))
+                    if self.buf.remaining_mut() == 0 {
+                        break;
+                    }
+                },
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    if self.buf.len() > 0 {
+                        break;
+                    } else {
+                        return Ok(Async::NotReady);
+                    }
+                },
+                Err(e) => {
+                    return Err(error::from(e))
+                }
+            }
         }
+        let read_size = self.buf.len();
+        let chunk = Chunk::from_chunk(self.buf.split_to(read_size).freeze());
+
+        Ok(Async::Ready(Some(chunk)))
     }
 }
 
