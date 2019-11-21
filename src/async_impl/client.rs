@@ -435,6 +435,11 @@ impl Client {
         ClientBuilder::new(pool)
     }
 
+    /// clear connection pool
+    pub fn clear_connection_pool(&self) {
+        self.inner.hyper.clear_pool();
+    }
+
     /// Convenience method to make a `GET` request to a URL.
     ///
     /// # Errors
