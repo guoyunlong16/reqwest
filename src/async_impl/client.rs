@@ -574,6 +574,11 @@ impl Client {
         ClientBuilder::new()
     }
 
+    /// clear connection pool
+    pub fn clear_connection_pool(&self) {
+        self.inner.hyper.clear_pool();
+    }
+
     /// Creates a `ClientBuilder` to configure a `Client`.
     ///
     /// This is the same as `ClientBuilder::new(pool: CpuPool)`.
