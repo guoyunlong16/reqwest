@@ -226,28 +226,29 @@ impl ClientBuilder {
 
                     let mut tls = ::rustls::ClientConfig::new();
 
-                    if config.http2_only {
-                        tls.set_protocols(&["h2".into()]);
-                    } else {
-                        tls.set_protocols(&[
-                            "h2".into(),
-                            "http/1.1".into(),
-                        ]);
-                    }
-                    //match config.http_version {
-                    //    HttpVersion::Http11 => {
+                    // if config.http2_only {
+                    //     tls.set_protocols(&["h2".into()]);
+                    // } else {
+                    //     tls.set_protocols(&[
+                    //         "h2".into(),
+                    //         "http/1.1".into(),
+                    //     ]);
+                    // }
 
-                    //    }
-                    //    HttpVersion::H2 => {
-                    //        tls.set_protocols(&["h2".into()]);
-                    //    }
-                    //    HttpVersion::DualAlpn => {
-                    //        tls.set_protocols(&[
-                    //            "h2".into(),
-                    //            "http/1.1".into(),
-                    //        ]);
-                    //    }
-                    //}
+                    match config.http_version {
+                        HttpVersion::Http11 => {
+
+                        }
+                        HttpVersion::H2 => {
+                            tls.set_protocols(&["h2".into()]);
+                        }
+                        HttpVersion::DualAlpn => {
+                            tls.set_protocols(&[
+                                "h2".into(),
+                                "http/1.1".into(),
+                            ]);
+                        }
+                    }
 
                     tls.root_store.add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
 
