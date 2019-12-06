@@ -20,6 +20,8 @@ The following types directly support the gzip compression case:
 - `Pending` is a non-blocking constructor for a `Decoder` in case the body needs to be checked for EOF
 */
 
+extern crate chrono;
+
 use std::fmt;
 use std::mem;
 use std::cmp;
@@ -202,9 +204,13 @@ impl Stream for Gzip {
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
         const BUFFER_SIZE:usize = INIT_BUFFER_SIZE*4;
 
+        println!("{:?} before reserve, buf capacity= {}, buf len= {}, buf remaining= {}", 
+                 chrono::Local::now(), self.buf.capacity(), self.buf.len(), self.buf.remaining_mut());
         if self.buf.remaining_mut() < BUFFER_SIZE {
             self.buf.reserve(BUFFER_SIZE);
         }
+        println!("{:?} after reserve, buf capacity= {}, buf len= {}, buf remaining= {}", 
+                 chrono::Local::now(), self.buf.capacity(), self.buf.len(), self.buf.remaining_mut());
 
         loop {
             // The buffer contains uninitialised memory so getting a readable slice is unsafe.
@@ -213,6 +219,8 @@ impl Stream for Gzip {
             // To be safe, this memory could be zeroed before passing to `flate2`.
             // Otherwise we might need to deal with the case where `flate2` panics.
             let read = try_io!(self.inner.read(unsafe { self.buf.bytes_mut() }));
+            println!("{:?} loop read= {}, buf capacity= {}, buf len= {}, buf remaining= {}", 
+                     chrono::Local::now(), read, self.buf.capacity(), self.buf.len(), self.buf.remaining_mut());
 
             if read == 0 {
                 // If GzDecoder reports EOF, it doesn't necessarily mean the
@@ -225,11 +233,14 @@ impl Stream for Gzip {
                 let inner_read = try_io!(self.inner.get_mut().read(&mut [0]));
                 if inner_read == 0 {
                     if self.buf.len() > 0 {
+                        println!("{:?} break inner_read = 0", chrono::Local::now());
                         break;
                     } else {
+                        println!("{:?} return None", chrono::Local::now());
                         return Ok(Async::Ready(None));
                     }
                 } else {
+                    println!("{:?} return Err", chrono::Local::now());
                     return Err(error::from(io::Error::new(
                         io::ErrorKind::InvalidData,
                         "unexpected data after gzip decoder signaled end-of-file",
@@ -237,8 +248,11 @@ impl Stream for Gzip {
                 }
             } else {
                 unsafe { self.buf.advance_mut(read) };
+                println!("{:?} loop after advance_mut, buf capacity= {}, buf len= {}, buf remaining= {}", 
+                         chrono::Local::now(), self.buf.capacity(), self.buf.len(), self.buf.remaining_mut());
 
                 if self.buf.remaining_mut() == 0 {
+                    println!("{:?} break self buf remaining = 0", chrono::Local::now());
                     break;
                 }
             }
@@ -246,6 +260,8 @@ impl Stream for Gzip {
         let read_size = self.buf.len();
         let chunk = Chunk::from_chunk(self.buf.split_to(read_size).freeze());
 
+        println!("{:?} gzip chunk len= {}", chrono::Local::now(), chunk.len());
+        println!("{:?} return Some", chrono::Local::now());
         Ok(Async::Ready(Some(chunk)))
     }
 }
