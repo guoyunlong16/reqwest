@@ -34,7 +34,7 @@ use hyper::header::{CONTENT_ENCODING, CONTENT_LENGTH, TRANSFER_ENCODING};
 use super::{Body, Chunk};
 use error;
 
-const INIT_BUFFER_SIZE: usize = 8192;
+const INIT_BUFFER_SIZE: usize = 32768;
 
 /// A response decompressor over a non-blocking stream of chunks.
 ///
