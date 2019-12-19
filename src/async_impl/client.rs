@@ -605,6 +605,8 @@ impl Client {
 
         *req.headers_mut() = headers.clone();
 
+        println!("Headers: {:?}", *req.headers());
+
         let in_flight = self.inner.hyper.request(req);
 
         let timeout = self.inner.request_timeout.map(|dur| {

@@ -60,7 +60,7 @@ doc-comment = "0.3"
 bytes = "0.4"
 
 [features]
-default = ["default-tls"]
+default = ["default-tls", "rustls-tls"]
 
 tls = []
 
