@@ -16,7 +16,7 @@ autotests = true
 all-features = true
 
 [features]
-default = ["default-tls"]
+default = ["default-tls", "rustls-tls"]
 
 # Note: this doesn't enable the 'native-tls' feature, which adds specific
 # functionality for it.
